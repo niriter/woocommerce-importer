@@ -45,7 +45,18 @@ foreach($links as $index=>$product_url){
     break;
   }
 
-  $product_element = get_all_product_details($product_url);
+  $product_element = new Product($product_url);
+
+  echo '<br>'.$product_element->url;
+  echo '<br>'.$product_element->name;
+  echo '<br>'.$product_element->price;
+  echo '<br>'.$product_element->articul;
+  echo '<br>';
+  print_r($product_element->attributes);
+  echo '<br>'.$product_element->category;
+  echo '<br>'.$product_element->first_image;
+  echo '<br>';
+  print_r($product_element->other_images);
 
 
 
@@ -53,68 +64,7 @@ foreach($links as $index=>$product_url){
   echo '<br><hr><br>';
 }
 
-function get_product_title($html){
-  $title = $html->find('h1', 0)->plaintext;
-  return $title;
-}
 
-function get_product_description($html){
-  $description = $html->find('table[width]', 10)->children(2)->first_child();
-  // foreach ($description->first_child()->find('text') as $key => $value) {
-  //   echo '<hr>'.$key." ".$value;
-  // }
-  echo $description->innertext;
-  return false;
-  $texter = '';
-  foreach ($description as $text) {
-    echo $text;
-    $texter = $texter . $text . '<br>';
-  }
-  return $texter;
-}
-
-function get_product_price($html){
-  $price = $html->find('div.uah', 0)->plaintext;
-  $price = str_replace(' ', '', $price);
-  $price = str_replace('грн.', '', $price);
-  return $price;
-}
-
-function get_product_first_image($html){
-  $url = $html->find('a.highslide', 0)->href;
-  return full_image_url($url);
-}
-
-function get_product_other_images($html){
-  $other_images_objects = $html->find('a.highslide');
-  $other_images_urls = array();
-  foreach ($other_images_objects as $key=>$value){
-    if ($key == 0){
-      continue;
-    }
-    array_push($other_images_urls, full_image_url($value->href));
-  }
-  return $other_images_urls;
-}
-
-function get_product_articul($attributes) {
-  return $attributes['Маркировка'];
-}
-
-function get_product_category($html) {
-  $test_var = $html->find('span[itemtype]');
-  return end($test_var)->first_child()->first_child()->innertext;
-}
-
-function get_product_attributes($html){
-  $product_details_blocks = $html->find('div.short-detail');
-  $product_detail = array();
-  foreach ($product_details_blocks as $key => $value){
-    $product_detailed = explode(": ", $value->plaintext);
-    $product_detail[$product_detailed[0]] = $product_detailed[1];
-  }
-  return $product_detail;
-}
 
 class Product {
   public $url;
@@ -126,40 +76,87 @@ class Product {
   public $category;
   public $first_image;
   public $other_images;
-}
 
-function get_all_product_details($product_url){
-  $producter                = new Product();
-  $producter->url           = $product_url;
-  $product_object           = str_get_html(get_html_from_url($producter->url));
-  $producter->name          = get_product_title($product_object);
-  $producter->attributes    = get_product_attributes($product_object);
-  $producter->articul       = get_product_articul($product_attributes);
-  $producter->price         = get_product_price($product_object);
-  $producter->front_image   = get_product_first_image($product_object);
-  $producter->other_images  = get_product_other_images($product_object);
-  $producter->category      = get_product_category($product_object);
+  function __construct($url){
+    $this->url            = $url;
+    $this->product_object = str_get_html(get_html_from_url($this->url));
+    $this->parse();
+  }
 
-  // Not working
-  // $product_description = get_product_description($product_object);
-  // echo $product_description.'<br>';
-}
+  function parse(){
+    $this->get_product_title();
+    $this->get_product_attributes();
+    $this->get_product_articul();
+    $this->get_product_price();
+    $this->get_product_first_image();
+    $this->get_product_other_images();
+    $this->get_product_category();
+  }
 
+  function get_product_title(){
+    $this->name = $this->product_object->find('h1', 0)->plaintext;
+  }
 
+  function get_product_description(){
+    $this->description = $this->product_object->find('table[width]', 10)->children(2)->first_child();
+    // foreach ($description->first_child()->find('text') as $key => $value) {
+    //   echo '<hr>'.$key." ".$value;
+    // }
+    // echo $this->description->innertext;
+    return false;
+    $texter = '';
+    foreach ($this->description as $text) {
+      // echo $text;
+      $texter = $texter . $text . '<br>';
+    }
+    return $texter;
+  }
 
+  function get_product_price(){
+    $this->price = $this->product_object->find('div.uah', 0)->plaintext;
+    $this->price = str_replace(' ', '', $this->price);
+    $this->price = str_replace('грн.', '', $this->price);
+  }
 
+  function get_product_first_image(){
+    $this->first_image = $this->full_image_url($this->product_object->find('a.highslide', 0)->href);
+  }
 
+  function get_product_other_images(){
+    $other_images_objects = $this->product_object->find('a.highslide');
+    $other_images_urls = array();
+    foreach ($other_images_objects as $key=>$value){
+      if ($key == 0){
+        continue;
+      }
+      array_push($other_images_urls, $this->full_image_url($value->href));
+    }
+    $this->other_images = $other_images_urls;
+  }
 
+  function get_product_attributes(){
+    $product_details_blocks = $this->product_object->find('div.short-detail');
+    $product_detail = array();
+    foreach ($product_details_blocks as $key => $value){
+      $product_detailed = explode(": ", $value->plaintext);
+      $product_detail[$product_detailed[0]] = $product_detailed[1];
+    }
+    $this->attributes = $product_detail;
+  }
 
+  function get_product_articul() {
+    if ($this->attributes) {
+      $this->articul = $this->attributes['Маркировка'];
+    } else {
+      $this->articul = false;
+    }
+  }
 
+  function get_product_category() {
+    $this->category = end($this->product_object->find('span[itemtype]'))->first_child()->first_child()->innertext;
+  }
 
-
-
-
-
-
-
-
-function full_image_url($url){
-  return 'https://effectstyle.com.ua/'.$url;
+  function full_image_url($url){
+    return 'https://effectstyle.com.ua/'.$url;
+  }
 }
