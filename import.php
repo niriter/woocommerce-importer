@@ -13,7 +13,6 @@ function get_html_from_url($url) {
   if (!$url) {
     return false;
   }
-  #Get html from url
   $ch = curl_init($url);
   curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
   curl_setopt($ch, CURLOPT_BINARYTRANSFER, true);
@@ -22,21 +21,14 @@ function get_html_from_url($url) {
   return $test;
 }
 $category_html = get_html_from_url($category_url);
-
-#Create DOM element
 $domobject = str_get_html($category_html);
-
-
-#Get links from url
+unset($category_html);
 $links = array();
 foreach ($domobject->find('td.center', 0)->children(7)->childNodes() as $element){
   foreach ($element->childNodes() as $elementer) {
     array_push($links, 'https://effectstyle.com.ua/' . $elementer->find(a, 0)->href);
   }
 }
-
-#Delete not used strings
-unset($category_html);
 unset($domobject);
 
 #Links loop walker
@@ -45,23 +37,15 @@ foreach($links as $index=>$product_url){
     break;
   }
 
-  $product_element = new Product($product_url);
+  $product = new Product();
+  $product->parse($product_url);
+  $new_url = $product->save_woocommerce();
 
-  echo '<br>'.$product_element->url;
-  echo '<br>'.$product_element->name;
-  echo '<br>'.$product_element->price;
-  echo '<br>'.$product_element->articul;
-  echo '<br>';
-  print_r($product_element->attributes);
-  echo '<br>'.$product_element->category;
-  echo '<br>'.$product_element->first_image;
-  echo '<br>';
-  print_r($product_element->other_images);
-
-
-
-
+  echo $product->url.'<br>';
+  echo '<a href="'.$new_url.'">'.$new_url.'</a><br>';
   echo '<br><hr><br>';
+
+
 }
 
 
@@ -77,13 +61,9 @@ class Product {
   public $first_image;
   public $other_images;
 
-  function __construct($url){
-    $this->url            = $url;
+  function parse($url){
+    $this->url = $url;
     $this->product_object = str_get_html(get_html_from_url($this->url));
-    $this->parse();
-  }
-
-  function parse(){
     $this->get_product_title();
     $this->get_product_attributes();
     $this->get_product_articul();
@@ -119,7 +99,7 @@ class Product {
   }
 
   function get_product_first_image(){
-    $this->first_image = $this->full_image_url($this->product_object->find('a.highslide', 0)->href);
+    $this->first_image = strval($this->full_image_url($this->product_object->find('a.highslide', 0)->href));
   }
 
   function get_product_other_images(){
@@ -147,6 +127,7 @@ class Product {
   function get_product_articul() {
     if ($this->attributes) {
       $this->articul = $this->attributes['Маркировка'];
+      unset($this->attributes['Маркировка']);
     } else {
       $this->articul = false;
     }
@@ -158,5 +139,91 @@ class Product {
 
   function full_image_url($url){
     return 'https://effectstyle.com.ua/'.$url;
+  }
+
+  function save_woocommerce() {
+    $post = array(
+        'post_author' => $user_id,
+        'post_content' => '',
+        'post_status' => "publish",
+        'post_title' => $this->name,
+        'post_parent' => '',
+        'post_type' => "product",
+    );
+      //Create post
+    $post_id = wp_insert_post( $post, $wp_error );
+    if($post_id && $this->first_image){
+        add_post_meta($post_id, '_thumbnail_id', $this->image_download_woocommerce($this->first_image));
+    }
+    wp_set_object_terms( $post_id, $this->category, 'product_cat' );
+    wp_set_object_terms($post_id, 'simple', 'product_type');
+
+    update_post_meta( $post_id, '_visibility', 'visible' );
+    update_post_meta( $post_id, '_stock_status', 'instock');
+    update_post_meta( $post_id, 'total_sales', '0');
+    update_post_meta( $post_id, '_downloadable', 'no');
+    update_post_meta( $post_id, '_virtual', 'no');
+    update_post_meta( $post_id, '_purchase_note', "" );
+    update_post_meta( $post_id, '_featured', "no" );
+    update_post_meta( $post_id, '_weight', "" );
+    update_post_meta( $post_id, '_length', "" );
+    update_post_meta( $post_id, '_width', "" );
+    update_post_meta( $post_id, '_height', "" );
+    update_post_meta($post_id, '_sku', $this->articul);
+    update_post_meta( $post_id, '_product_attributes', $this->attributes_woocommerce());
+    update_post_meta( $post_id, '_price', $this->price);
+    update_post_meta( $post_id, '_sold_individually', "" );
+    update_post_meta( $post_id, '_manage_stock', "no" );
+    update_post_meta( $post_id, '_backorders', "no" );
+    update_post_meta( $post_id, '_stock', "" );
+    if ($this->other_images) {
+      foreach($this->other_images as $key=>$url) {
+        update_post_meta( $post_id, '_product_image_gallery', $this->image_download_woocommerce($url));
+      }
+    }
+    return get_permalink($post_id);
+  }
+
+  function attributes_woocommerce(){
+    $i = 0;
+    foreach ($this->attributes as $name => $value) {
+        $product_attributes[$i] = array (
+            'name' => htmlspecialchars( stripslashes( $name ) ),
+            'value' => $value,
+            'position' => 1,
+            'is_visible' => 1,
+            'is_variation' => 1,
+            'is_taxonomy' => 0
+        );
+        $i++;
+    }
+    return $product_attributes;
+  }
+
+  function image_download_woocommerce($url) {
+    $image_url        = $url;
+    $image_name       = end(explode('/', $url));
+    $image_data       = get_html_from_url($url);
+    $upload_dir       = wp_upload_dir();
+    $unique_file_name = wp_unique_filename( $upload_dir['path'], $image_name );
+    $filename         = basename( $unique_file_name );
+    if( wp_mkdir_p( $upload_dir['path'] ) ) {
+        $file = $upload_dir['path'] . '/' . $filename;
+    } else {
+        $file = $upload_dir['basedir'] . '/' . $filename;
+    }
+    file_put_contents( $file, $image_data );
+    $wp_filetype = wp_check_filetype( $filename, null );
+    $attachment = array(
+        'post_mime_type' => $wp_filetype['type'],
+        'post_title'     => sanitize_file_name( $filename ),
+        'post_content'   => '',
+        'post_status'    => 'inherit'
+    );
+    $attach_id = wp_insert_attachment( $attachment, $file, $post_id );
+    require_once(ABSPATH . 'wp-admin/includes/image.php');
+    $attach_data = wp_generate_attachment_metadata( $attach_id, $file );
+    wp_update_attachment_metadata( $attach_id, $attach_data );
+    return $attach_id;
   }
 }
