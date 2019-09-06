@@ -1,37 +1,14 @@
 <?php
 echo "Page to import products from old site to new <br/>";
 
-$auto_category = true;
+include 'simple-html-dom.php';
+
 $category_url = 'https://effectstyle.com.ua/category_81.html';
 // if debug==true, no more than 1 product not will import
 $debug = true;
 
-#Import DOM file
-include 'simple-html-dom.php';
+$links = get_product_links($category_url);
 
-function get_html_from_url($url) {
-  if (!$url) {
-    return false;
-  }
-  $ch = curl_init($url);
-  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-  curl_setopt($ch, CURLOPT_BINARYTRANSFER, true);
-  $test = curl_exec($ch);
-  curl_close($ch);
-  return $test;
-}
-$category_html = get_html_from_url($category_url);
-$domobject = str_get_html($category_html);
-unset($category_html);
-$links = array();
-foreach ($domobject->find('td.center', 0)->children(7)->childNodes() as $element){
-  foreach ($element->childNodes() as $elementer) {
-    array_push($links, 'https://effectstyle.com.ua/' . $elementer->find(a, 0)->href);
-  }
-}
-unset($domobject);
-
-#Links loop walker
 foreach($links as $index=>$product_url){
   if ($debug == true && $index > 0) {
     break;
@@ -41,7 +18,7 @@ foreach($links as $index=>$product_url){
   $product->parse($product_url);
   $new_url = $product->save_woocommerce();
 
-  echo $product->url.'<br>';
+  echo $product_url.'<br>';
   echo '<a href="'.$new_url.'">'.$new_url.'</a><br>';
   echo '<br><hr><br>';
 
@@ -226,4 +203,30 @@ class Product {
     wp_update_attachment_metadata( $attach_id, $attach_data );
     return $attach_id;
   }
+}
+
+function get_html_from_url($url) {
+  if (!$url) {
+    return false;
+  }
+  $ch = curl_init($url);
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  curl_setopt($ch, CURLOPT_BINARYTRANSFER, true);
+  $test = curl_exec($ch);
+  curl_close($ch);
+  return $test;
+}
+
+function get_product_links($category_url){
+  $category_html = get_html_from_url($category_url);
+  $domobject = str_get_html($category_html);
+  unset($category_html);
+  $links = array();
+  foreach ($domobject->find('td.center', 0)->children(7)->childNodes() as $element){
+    foreach ($element->childNodes() as $elementer) {
+      array_push($links, 'https://effectstyle.com.ua/' . $elementer->find(a, 0)->href);
+    }
+  }
+  unset($domobject);
+  return $links
 }
