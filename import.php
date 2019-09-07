@@ -150,6 +150,9 @@ class Product {
   }
 
   function save_woocommerce() {
+    if ($this->product_exists()) {
+      
+    }
     $post = array(
         'post_author' => $user_id,
         'post_content' => '',
