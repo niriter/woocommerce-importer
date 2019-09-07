@@ -67,6 +67,7 @@ class Product {
     $this->url = $url;
     $this->product_object = str_get_html(get_html_from_url($this->url));
     $this->get_product_title();
+    $this->get_product_description();
     $this->get_product_price();
     $this->get_product_attributes();
     $this->get_product_first_image();
@@ -80,18 +81,10 @@ class Product {
   }
 
   function get_product_description(){
-    $this->description = $this->product_object->find('table[width]', 10)->children(2)->first_child();
-    // foreach ($description->first_child()->find('text') as $key => $value) {
-    //   echo '<hr>'.$key." ".$value;
-    // }
-    // echo $this->description->innertext;
-    return false;
-    $texter = '';
-    foreach ($this->description as $text) {
-      // echo $text;
-      $texter = $texter . $text . '<br>';
-    }
-    return $texter;
+    $temp = $this->product_object->find('article', 0);
+    $temp->find('ul.nav-tabs', 0)->outertext = '';
+    $temp->find('div.tab-content', 0)->outertext = '';
+    $this->description = $temp->innertext;
   }
 
   function get_product_price(){
