@@ -1,11 +1,29 @@
 <?php
+ini_set('max_execution_time', '600');
 echo "Page to import products from old site to new <br/>";
+
 
 include 'simple-html-dom.php';
 
-$category_url = 'https://effectstyle.com.ua/category_81.html';
+
 // if debug==true, no more than 1 product not will import
 $debug = true;
+$save_products = false;
+$file = 'category_urls.txt';
+
+
+if (file_exists($file)){
+  $lines = file($file);
+  $category_url = strval(trim($lines[0]));
+  if ($debug == false) {
+    unset($lines[0]);
+    file_put_contents($file, implode('', $lines));
+  }
+} else {
+  echo 'nope';
+  $category_url = 'http://beltrakt.ru/traktory/mini-traktory/';
+}
+
 
 $links = get_product_links($category_url);
 
@@ -16,15 +34,21 @@ foreach($links as $index=>$product_url){
 
   $product = new Product();
   $product->parse($product_url);
-  $new_url = $product->save_woocommerce();
+  if ($debug == true) {
+    foreach ($product->display_info() as $key => $value){
+      echo '<b>'.$key.':</b><br>';
+      print_r($value);
+      echo '<br><hr>';
+    }
+  }
+  if ($save_products) {
+    $new_url = $product->save_woocommerce();
 
-  echo $product_url.'<br>';
-  echo '<a href="'.$new_url.'">'.$new_url.'</a><br>';
-  echo '<br><hr><br>';
-
-
+    echo $product_url.'<br>';
+    echo '<a href="'.$new_url.'">'.$new_url.'</a><br>';
+    echo '<br><hr><br>';
+  }
 }
-
 
 
 class Product {
@@ -37,17 +61,18 @@ class Product {
   public $category;
   public $first_image;
   public $other_images;
+  public $slug;
 
   function parse($url){
     $this->url = $url;
     $this->product_object = str_get_html(get_html_from_url($this->url));
     $this->get_product_title();
-    $this->get_product_attributes();
-    $this->get_product_articul();
     $this->get_product_price();
+    $this->get_product_attributes();
     $this->get_product_first_image();
     $this->get_product_other_images();
     $this->get_product_category();
+    $this->get_product_slug();
   }
 
   function get_product_title(){
@@ -70,33 +95,34 @@ class Product {
   }
 
   function get_product_price(){
-    $this->price = $this->product_object->find('div.uah', 0)->plaintext;
+    $this->price = $this->product_object->find('span[itemprop=price]', 0)->plaintext;
     $this->price = str_replace(' ', '', $this->price);
     $this->price = str_replace('грн.', '', $this->price);
   }
 
   function get_product_first_image(){
-    $this->first_image = strval($this->full_image_url($this->product_object->find('a.highslide', 0)->href));
+    $this->first_image = strval($this->full_image_url($this->product_object->find('img.thumbnail', 0)->src));
   }
 
   function get_product_other_images(){
-    $other_images_objects = $this->product_object->find('a.highslide');
+    $other_images_objects = $this->product_object->find('div#foto', 0)->find('img');
+    if (empty($other_images_objects)){
+    }
     $other_images_urls = array();
     foreach ($other_images_objects as $key=>$value){
-      if ($key == 0){
-        continue;
-      }
-      array_push($other_images_urls, $this->full_image_url($value->href));
+      // if ($key == 0){
+      //   continue;
+      // }
+      array_push($other_images_urls, $this->full_image_url($value->src));
     }
     $this->other_images = $other_images_urls;
   }
 
   function get_product_attributes(){
-    $product_details_blocks = $this->product_object->find('div.short-detail');
+    $product_details_blocks = $this->product_object->find('div#tth', 0)->find('tr');
     $product_detail = array();
     foreach ($product_details_blocks as $key => $value){
-      $product_detailed = explode(": ", $value->plaintext);
-      $product_detail[$product_detailed[0]] = $product_detailed[1];
+      $product_detail[$value->find('td', 0)->plaintext] = $value->find('td', 1)->plaintext;
     }
     $this->attributes = $product_detail;
   }
@@ -111,11 +137,23 @@ class Product {
   }
 
   function get_product_category() {
-    $this->category = end($this->product_object->find('span[itemtype]'))->first_child()->first_child()->innertext;
+    $this->category = $this->product_object->find('div.path', 0)->last_child()->plaintext;
+  }
+
+  function get_product_slug() {
+    $temp = explode('/', $this->url);
+    $this->slug = $temp[count($temp)-2];
+  }
+
+  function display_info(){
+    $temp = $this->product_object;
+    unset($this->product_object);
+    return get_object_vars($this);
+    $this->product_object = $temp;
   }
 
   function full_image_url($url){
-    return 'https://effectstyle.com.ua/'.$url;
+    return 'http://beltrakt.ru'.$url;
   }
 
   function save_woocommerce() {
@@ -213,6 +251,8 @@ function get_html_from_url($url) {
   curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
   curl_setopt($ch, CURLOPT_BINARYTRANSFER, true);
   $test = curl_exec($ch);
+  $http_code = curl_getinfo( $ch, CURLINFO_HTTP_CODE );
+  // echo $url.' - '.$http_code;
   curl_close($ch);
   return $test;
 }
@@ -222,11 +262,10 @@ function get_product_links($category_url){
   $domobject = str_get_html($category_html);
   unset($category_html);
   $links = array();
-  foreach ($domobject->find('td.center', 0)->children(7)->childNodes() as $element){
-    foreach ($element->childNodes() as $elementer) {
-      array_push($links, 'https://effectstyle.com.ua/' . $elementer->find(a, 0)->href);
-    }
+  foreach ($domobject->find('a.cat_title') as $element){
+    array_push($links, 'http://beltrakt.ru' . $element->href);
   }
   unset($domobject);
-  return $links
+  unset($category_html);
+  return $links;
 }
