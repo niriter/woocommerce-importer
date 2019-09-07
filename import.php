@@ -9,7 +9,7 @@ include 'simple-html-dom.php';
 // if debug==true, no more than 1 product not will import
 $debug = true;
 $save_products = false;
-$file = 'category_urls.txt';
+$file = 'wp-content/themes/beltrakt/category_urls.txt';
 
 
 if (file_exists($file)){
@@ -151,7 +151,7 @@ class Product {
 
   function save_woocommerce() {
     if ($this->product_exists()) {
-      
+      return;
     }
     $post = array(
         'post_author' => $user_id,
@@ -161,6 +161,10 @@ class Product {
         'post_parent' => '',
         'post_type' => "product",
     );
+
+    if ($this->slug){
+      $post['post_name'] = $this->slug;
+    }
       //Create post
     $post_id = wp_insert_post( $post, $wp_error );
     if($post_id && $this->first_image){
@@ -236,6 +240,15 @@ class Product {
     $attach_data = wp_generate_attachment_metadata( $attach_id, $file );
     wp_update_attachment_metadata( $attach_id, $attach_data );
     return $attach_id;
+  }
+
+  function product_exists(){
+    global $wpdb;
+    if($wpdb->get_row("SELECT post_name FROM wp_posts WHERE post_name = '".$this->slug."'", 'ARRAY_A')) {
+        return true;
+    } else {
+        return false;
+    }
   }
 }
 
